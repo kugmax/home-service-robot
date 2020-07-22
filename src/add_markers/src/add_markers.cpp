@@ -1,17 +1,84 @@
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
+#include <cmath>
+#include "nav_msgs/Odometry.h"
+
+enum State { 
+  MOVING_TO_PICKUP_ZONE,
+  PICKIN_UP,
+  MOVING_TO_DROP_ZONE,
+  WAIT
+};
+State robotState = MOVING_TO_PICKUP_ZONE;
+
+visualization_msgs::Marker marker;
+ros::Publisher marker_pub; 
+
+double pickup_x = 1.04;
+double pickup_y = 0.56;
+
+double drop_x = -0.32;
+double drop_y = -4.07;
+
+bool isReachedGoal(double goal_x, double goal_y, double current_x, double current_y) {
+  double distance = sqrt(pow(goal_x - current_x, 2) + pow(goal_y - current_y, 2));
+
+  return distance <= 0.05; 
+
+}
+
+void callback(const nav_msgs::Odometry::ConstPtr& msg)
+{
+  double current_x = msg->pose.pose.position.x;
+  double current_y = msg->pose.pose.position.y;
+  //ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", current_x, current_y,  msg->pose.pose.position.z);
+
+ switch(robotState) {
+   case MOVING_TO_PICKUP_ZONE:
+        if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
+	  ROS_INFO("Pickup zone reached....");
+          robotState = PICKIN_UP;
+          
+          marker.action = visualization_msgs::Marker::DELETE;
+          marker_pub.publish(marker);
+        }
+
+	break;
+   case PICKIN_UP:
+        if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
+	  ROS_INFO("Pickin up....");
+        } else {
+	  ROS_INFO("Moving to drop zone....");
+          robotState = MOVING_TO_DROP_ZONE;
+          
+          marker.action = visualization_msgs::Marker::ADD; 
+          marker.pose.position.x = drop_x;
+          marker.pose.position.y = drop_y;
+          marker_pub.publish(marker);
+        }
+	break;
+   case MOVING_TO_DROP_ZONE:
+        if (isReachedGoal(drop_x, drop_y, current_x, current_y)) {
+	  ROS_INFO("Drop zone reached....");
+          robotState = WAIT;
+        }
+	break;
+   default: break;
+ }
+
+}
 
 int main( int argc, char** argv )
 {
   ros::init(argc, argv, "basic_shapes");
   ros::NodeHandle n;
   ros::Rate r(1);
-  ros::Publisher marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-
+  marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
+  ros::Subscriber sub = n.subscribe("odom", 100, callback);
+  
   // Set our initial shape type to be a cube
   uint32_t shape = visualization_msgs::Marker::CUBE;
 
-    visualization_msgs::Marker marker;
     // Set the frame ID and timestamp.  See the TF tutorials for information on these.
     marker.header.frame_id = "/map";
     marker.header.stamp = ros::Time::now();
@@ -28,8 +95,8 @@ int main( int argc, char** argv )
     marker.action = visualization_msgs::Marker::ADD;
 
     // Set the pose of the marker.  This is a full 6DOF pose relative to the frame/time specified in the header
-    marker.pose.position.x = 1.04;
-    marker.pose.position.y = 0.56;
+    marker.pose.position.x = pickup_x;
+    marker.pose.position.y = pickup_y;
     marker.pose.position.z = 0;
     marker.pose.orientation.x = 0.0;
     marker.pose.orientation.y = 0.0;
@@ -60,16 +127,8 @@ int main( int argc, char** argv )
     }
 
     marker_pub.publish(marker);
-    ros::Duration(5.0).sleep();
-
-    marker.action = visualization_msgs::Marker::DELETE;
-    ros::Duration(5.0).sleep();
-   
-    marker.action = visualization_msgs::Marker::ADD; 
     
-    marker.pose.position.x = -0.32;
-    marker.pose.position.y = -4.07;
-    marker.pose.position.z = 0;
+    ros::spin();
 
-    marker_pub.publish(marker);
+    return 0;
 }
