@@ -10,30 +10,43 @@ enum State {
   WAIT
 };
 State robotState = MOVING_TO_PICKUP_ZONE;
+bool isRobotWait = true;
 
 visualization_msgs::Marker marker;
 ros::Publisher marker_pub; 
 
-double pickup_x = 1.04;
-double pickup_y = 0.56;
+//double pickup_x = 1.04;
+//double pickup_y = 0.56;
+
+double pickup_x = 1.97;
+double pickup_y = -2.02;
 
 double drop_x = -0.32;
 double drop_y = -4.07;
 
-bool isReachedGoal(double goal_x, double goal_y, double current_x, double current_y) {
-  double distance = sqrt(pow(goal_x - current_x, 2) + pow(goal_y - current_y, 2));
+double last_x = 0;
+double last_y = 0;
+double last_w = 0;
+bool checkRobotPos = false;
 
-  return distance <= 0.1; 
-
+double get_distance(double x1, double y1, double x2, double y2) {
+  return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
 }
+
+bool isReachedGoal(double goal_x, double goal_y, double current_x, double current_y) {
+  double distance = get_distance(goal_x, goal_y, current_x, current_y);
+  //ROS_INFO("distance %f ", distance);
+  return distance <= 0.5; 
+}
+
 
 void process_robot_position(double current_x, double current_y) 
 {
  switch(robotState) {
    case MOVING_TO_PICKUP_ZONE:
-        //ROS_INFO("Movin to pickup (%f;%f)  (%f;%f)", current_x, current_y,pickup_x, pickup_y);
+        ROS_INFO("Movin to pickup (%f;%f)  (%f;%f) %s", current_x, current_y,pickup_x, pickup_y, isRobotWait?"true":"false" );
         
-        if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
+        if (isReachedGoal(pickup_x, pickup_y, current_x, current_y) && isRobotWait) {
 	  ROS_INFO("Pickup zone reached....");
           robotState = PICKIN_UP;
           
@@ -43,9 +56,9 @@ void process_robot_position(double current_x, double current_y)
 
 	break;
    case PICKIN_UP:
-        //ROS_INFO("Pickin up (%f;%f)  (%f;%f)", current_x, current_y,pickup_x, pickup_y);
-       
-         if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
+        ROS_INFO("Pickin up (%f;%f)  (%f;%f) %s", current_x, current_y,pickup_x, pickup_y, isRobotWait?"true":"false");
+     
+        if (isRobotWait) {
 	  ROS_INFO("Pickin up....");
         } else {
 	  ROS_INFO("Moving to drop zone....");
@@ -58,9 +71,9 @@ void process_robot_position(double current_x, double current_y)
         }
 	break;
    case MOVING_TO_DROP_ZONE:
-        //ROS_INFO("Drop (%f;%f)  (%f;%f)", current_x, current_y, drop_x, drop_y);
+       // ROS_INFO("Drop (%f;%f)  (%f;%f)", current_x, current_y, drop_x, drop_y);
         
-        if (isReachedGoal(drop_x, drop_y, current_x, current_y)) {
+        if (isReachedGoal(drop_x, drop_y, current_x, current_y) && isRobotWait) {
 	  ROS_INFO("Drop zone reached....");
           robotState = WAIT;
         }
@@ -70,13 +83,31 @@ void process_robot_position(double current_x, double current_y)
 
 }
 
+void timerCallback(const ros::TimerEvent&) {
+  checkRobotPos = true;
+}
 
 void callbackOdom(const nav_msgs::Odometry::ConstPtr& msg)
 {
+  if (!checkRobotPos) return;
+  checkRobotPos = false;
+
   double current_x = msg->pose.pose.position.x;
   double current_y = msg->pose.pose.position.y;
+  double current_w = msg->pose.pose.orientation.w;
 
-   process_robot_position(current_x, current_y);
+  //ROS_INFO("(%f;%f)  (%f;%f)", current_x, current_y, last_x, last_y);
+
+  //double distance = get_distance(last_x, last_y, current_x, current_y);
+  
+  double distance = sqrt(pow(last_x - current_x, 2) + pow(last_y - current_y, 2) + pow(last_w - current_w, 2));
+
+  ROS_INFO("distance %f ", distance);
+  isRobotWait = distance <= 0.001; 
+
+  last_x = current_x;
+  last_y = current_y;
+  last_w = current_w;
 }
 
 void amlPosCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msgAMCL)
@@ -92,9 +123,11 @@ int main( int argc, char** argv )
   ros::NodeHandle n;
   ros::Rate r(1);
   marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-//  ros::Subscriber sub = n.subscribe("odom", 1000, callbackOdom);
+  ros::Subscriber sub = n.subscribe("odom", 1000, callbackOdom);
 
   ros::Subscriber amlPosSub = n.subscribe("amcl_pose", 1000, amlPosCallback);  
+  ros::Timer timer = n.createTimer(ros::Duration(0.2), timerCallback);
+
   // Set our initial shape type to be a cube
   uint32_t shape = visualization_msgs::Marker::CUBE;
 
