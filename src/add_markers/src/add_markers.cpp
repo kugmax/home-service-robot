@@ -15,9 +15,6 @@ bool isRobotWait = true;
 visualization_msgs::Marker marker;
 ros::Publisher marker_pub; 
 
-//double pickup_x = 1.04;
-//double pickup_y = 0.56;
-
 double pickup_x = 1.97;
 double pickup_y = -2.02;
 
@@ -28,6 +25,10 @@ double last_x = 0;
 double last_y = 0;
 double last_w = 0;
 bool checkRobotPos = false;
+
+double aml_x = 0; 
+double aml_y = 0; 
+
 
 double get_distance(double x1, double y1, double x2, double y2) {
   return sqrt(pow(x1 - x2, 2) + pow(y1 - y2, 2));
@@ -44,7 +45,7 @@ void process_robot_position(double current_x, double current_y)
 {
  switch(robotState) {
    case MOVING_TO_PICKUP_ZONE:
-        ROS_INFO("Movin to pickup (%f;%f)  (%f;%f) %s", current_x, current_y,pickup_x, pickup_y, isRobotWait?"true":"false" );
+        //ROS_INFO("Movin to pickup (%f;%f)  (%f;%f) %s", current_x, current_y,pickup_x, pickup_y, isRobotWait?"true":"false" );
         
         if (isReachedGoal(pickup_x, pickup_y, current_x, current_y) && isRobotWait) {
 	  ROS_INFO("Pickup zone reached....");
@@ -56,7 +57,7 @@ void process_robot_position(double current_x, double current_y)
 
 	break;
    case PICKIN_UP:
-        ROS_INFO("Pickin up (%f;%f)  (%f;%f) %s", current_x, current_y,pickup_x, pickup_y, isRobotWait?"true":"false");
+        //ROS_INFO("Pickin up (%f;%f)  (%f;%f) %s", current_x, current_y,pickup_x, pickup_y, isRobotWait?"true":"false");
      
         if (isRobotWait) {
 	  ROS_INFO("Pickin up....");
@@ -96,15 +97,13 @@ void callbackOdom(const nav_msgs::Odometry::ConstPtr& msg)
   double current_y = msg->pose.pose.position.y;
   double current_w = msg->pose.pose.orientation.w;
 
-  //ROS_INFO("(%f;%f)  (%f;%f)", current_x, current_y, last_x, last_y);
-
-  //double distance = get_distance(last_x, last_y, current_x, current_y);
-  
   double distance = sqrt(pow(last_x - current_x, 2) + pow(last_y - current_y, 2) + pow(last_w - current_w, 2));
 
-  ROS_INFO("distance %f ", distance);
+  //ROS_INFO("distance %f ", distance);
   isRobotWait = distance <= 0.001; 
 
+  process_robot_position(aml_x, aml_y);
+  
   last_x = current_x;
   last_y = current_y;
   last_w = current_w;
@@ -112,9 +111,8 @@ void callbackOdom(const nav_msgs::Odometry::ConstPtr& msg)
 
 void amlPosCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msgAMCL)
 {
-    double aml_x = msgAMCL->pose.pose.position.x;
-    double aml_y = msgAMCL->pose.pose.position.y;
-    process_robot_position(aml_x, aml_y);
+    aml_x = msgAMCL->pose.pose.position.x;
+    aml_y = msgAMCL->pose.pose.position.y;
 }
 
 int main( int argc, char** argv )
