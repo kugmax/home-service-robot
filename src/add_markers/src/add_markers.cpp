@@ -2,7 +2,7 @@
 #include <visualization_msgs/Marker.h>
 #include <cmath>
 #include "nav_msgs/Odometry.h"
-
+#include "geometry_msgs/PoseWithCovarianceStamped.h"
 enum State { 
   MOVING_TO_PICKUP_ZONE,
   PICKIN_UP,
@@ -23,18 +23,16 @@ double drop_y = -4.07;
 bool isReachedGoal(double goal_x, double goal_y, double current_x, double current_y) {
   double distance = sqrt(pow(goal_x - current_x, 2) + pow(goal_y - current_y, 2));
 
-  return distance <= 0.05; 
+  return distance <= 0.1; 
 
 }
 
-void callback(const nav_msgs::Odometry::ConstPtr& msg)
+void process_robot_position(double current_x, double current_y) 
 {
-  double current_x = msg->pose.pose.position.x;
-  double current_y = msg->pose.pose.position.y;
-  //ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]", current_x, current_y,  msg->pose.pose.position.z);
-
  switch(robotState) {
    case MOVING_TO_PICKUP_ZONE:
+        //ROS_INFO("Movin to pickup (%f;%f)  (%f;%f)", current_x, current_y,pickup_x, pickup_y);
+        
         if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
 	  ROS_INFO("Pickup zone reached....");
           robotState = PICKIN_UP;
@@ -45,7 +43,9 @@ void callback(const nav_msgs::Odometry::ConstPtr& msg)
 
 	break;
    case PICKIN_UP:
-        if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
+        //ROS_INFO("Pickin up (%f;%f)  (%f;%f)", current_x, current_y,pickup_x, pickup_y);
+       
+         if (isReachedGoal(pickup_x, pickup_y, current_x, current_y)) {
 	  ROS_INFO("Pickin up....");
         } else {
 	  ROS_INFO("Moving to drop zone....");
@@ -58,6 +58,8 @@ void callback(const nav_msgs::Odometry::ConstPtr& msg)
         }
 	break;
    case MOVING_TO_DROP_ZONE:
+        //ROS_INFO("Drop (%f;%f)  (%f;%f)", current_x, current_y, drop_x, drop_y);
+        
         if (isReachedGoal(drop_x, drop_y, current_x, current_y)) {
 	  ROS_INFO("Drop zone reached....");
           robotState = WAIT;
@@ -68,19 +70,36 @@ void callback(const nav_msgs::Odometry::ConstPtr& msg)
 
 }
 
+
+void callbackOdom(const nav_msgs::Odometry::ConstPtr& msg)
+{
+  double current_x = msg->pose.pose.position.x;
+  double current_y = msg->pose.pose.position.y;
+
+   process_robot_position(current_x, current_y);
+}
+
+void amlPosCallback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& msgAMCL)
+{
+    double aml_x = msgAMCL->pose.pose.position.x;
+    double aml_y = msgAMCL->pose.pose.position.y;
+    process_robot_position(aml_x, aml_y);
+}
+
 int main( int argc, char** argv )
 {
-  ros::init(argc, argv, "basic_shapes");
+  ros::init(argc, argv, "add_markers");
   ros::NodeHandle n;
   ros::Rate r(1);
   marker_pub = n.advertise<visualization_msgs::Marker>("visualization_marker", 1);
-  ros::Subscriber sub = n.subscribe("odom", 100, callback);
-  
+//  ros::Subscriber sub = n.subscribe("odom", 1000, callbackOdom);
+
+  ros::Subscriber amlPosSub = n.subscribe("amcl_pose", 1000, amlPosCallback);  
   // Set our initial shape type to be a cube
   uint32_t shape = visualization_msgs::Marker::CUBE;
 
     // Set the frame ID and timestamp.  See the TF tutorials for information on these.
-    marker.header.frame_id = "/map";
+    marker.header.frame_id = "map";
     marker.header.stamp = ros::Time::now();
 
     // Set the namespace and id for this marker.  This serves to create a unique ID
@@ -105,7 +124,7 @@ int main( int argc, char** argv )
 
     marker.scale.x = 0.5;
     marker.scale.y = 0.5;
-    marker.scale.z = 0.5;
+    marker.scale.z = 0.1;
 
     // Set the color -- be sure to set alpha to something non-zero!
     marker.color.r = 0.0f;
@@ -127,7 +146,8 @@ int main( int argc, char** argv )
     }
 
     marker_pub.publish(marker);
-    
+    ROS_INFO("Place market"); 
+
     ros::spin();
 
     return 0;
